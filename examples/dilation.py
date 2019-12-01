@@ -97,6 +97,44 @@ def dilation2(img: torch.Tensor, structuring_element: torch.Tensor):
         return out
 
 
+def dilation3(img: torch.Tensor, structuring_element: torch.Tensor):
+    r"""Function that computes dilated image given a structuring element.
+    See :class:`~kornia.morphology.Dilation` for details.
+    """
+    if not torch.is_tensor(img):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(img)}")
+    if not torch.is_tensor(structuring_element):
+        raise TypeError(f"Structuring element type is not a torch.Tensor. Got {type(structuring_element)}")
+    img_shape = img.shape
+    if not (len(img_shape) == 3 or len(img_shape) == 4):
+        raise ValueError(f"Expected input tensor to be of ndim 3 or 4, but got {len(img_shape)}")
+    if len(img_shape) == 3:
+        # unsqueeze introduces a batch dimension
+        img = img.unsqueeze(0)
+    else:
+        if(img_shape[1] != 1):
+            raise ValueError(f"Expected a single channel image, but got {img_shape[1]} channels")
+    if len(structuring_element.shape) != 2:
+        raise ValueError(
+            f"Expected structuring element tensor to be of ndim=2, but got {len(structuring_element.shape)}")
+
+    img_pad = torch.nn.ConstantPad2d((structuring_element.shape[0]//2, structuring_element.shape[0]//2, structuring_element.shape[1]//2, structuring_element.shape[1]//2), 0)(img)
+    windows = f.unfold(img_pad, kernel_size=structuring_element.shape)
+    #pdb.set_trace()
+    # st_elem_tmp of shape [1, 9, 1] (assuming structuring_element was 3x3)
+    st_elem_tmp = structuring_element.flatten().unsqueeze(0).unsqueeze(-1)
+    max_kernel = structuring_element.max()
+    processed = windows.add(st_elem_tmp).max(dim=1, keepdims=True)[0] - max_kernel
+    out = f.fold(processed, img.shape[-2:], kernel_size=1)
+
+    #pdb.set_trace()
+
+    if len(img_shape) == 3:
+        # If the input ndim was 3, then remove the fake batch dim introduced to do conv
+        return torch.squeeze(out, 0)
+    else:
+        return out
+
 
 # create an image
 img = np.zeros([1, 10, 10], dtype=float)
@@ -117,7 +155,7 @@ structuring_element = torch.tensor(np_structuring_element).float()
 # 1 1 1
 # 1 1 1
 
-dilated_image = dilation2(bin_image, structuring_element)
+dilated_image = dilation3(bin_image, structuring_element)
 
 # convert back to numpy
 dilated_image: np.array = kornia.tensor_to_image(dilated_image)
